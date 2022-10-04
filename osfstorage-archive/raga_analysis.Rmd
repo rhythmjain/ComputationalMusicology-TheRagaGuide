@@ -1,0 +1,197 @@
+---
+title: "Raga Analysis"
+date: '`r Sys.Date()`'
+link-citations: yes
+output:
+  tufte::tufte_handout:
+    citation_package: natbib
+    latex_engine: xelatex
+  tufte::tufte_book:
+    citation_package: natbib
+    latex_engine: xelatex
+  tufte::tufte_html: default
+subtitle: Checking for normality, etc.
+bibliography: skeleton.bib
+---
+
+```{r setup, include=FALSE}
+library(tufte)
+library(dplyr)
+library(plyr)
+library(corrplot)
+library(car)
+library(ggplot2)
+library
+knitr::opts_chunk$set(fig.width=14, fig.height=12) 
+setwd(".")
+# invalidate cache when the tufte version changes
+knitr::opts_chunk$set(tidy = FALSE, cache.extra = packageVersion('tufte'))
+options(htmltools.dir.version = FALSE)
+```
+
+# To do:
+
+The things we need to do to this data:
+
+- Check for perfect collinearity. It's problematic if anything is more than .8.
+- Check for homogeneity of variance (Levene's test)
+- Check Independent errors (Durbin-Watson Statistic)
+- Normally distributed errors (resids of model need to be normally distributed around a mean of 0)
+- Linearity (mean Y value for every increment of the predictors line in a straight line.)
+
+
+First, we load the data and clean it up a bit. 
+
+```{r}
+
+###load the data
+setwd(".")
+raga_data <- read.csv("raga_dataframe.csv", header=T)
+####make the second column (the y variable) numeric, not a factor.
+raga_data[,2] <- as.numeric(as.character(raga_data[,2]))
+###get rid of columns that have only 0s (transitions from weird notes, that never occur in the real world).
+raga_data1 <- raga_data[, sapply(raga_data, class) != "integer"]
+
+##get rid of some columns that aren't immediately relevant.
+raga_data1$X <- NULL
+raga_data1$FILENAME <- NULL
+raga_data1$Identical. <- NULL
+```
+
+## Collinearity
+
+It seems that we do have some collinearity, but really only when the transition probabilities are included (this is a theme I'll come back to...). 
+
+The plot below is pretty unreadable, but the important thing is that the dark blue squares are highly correlated. 
+
+Originally, I included the numbers of everything as well, but it added about 200 pages to the PDF. If I'm not mistaken, we're just looking for anything higher than .8 in the text file below. If you'd like to do it, just uncomment the "cor(my_cor)" line below.
+
+```{r, message=FALSE, warning=FALSE}
+##make a matrix for correlation
+my_data <- as.matrix(raga_data1[,2:ncol(raga_data1)])
+###note it does seem like there's some collinearity happening. :-/
+my_cor <- cor(raga_data1[,2:ncol(raga_data1)])
+
+###plot correlation
+corrplot(my_cor)
+###get values
+#cor(my_cor)
+
+```
+
+Both the plot and the numbers indicate that there *is* some collinearity that we might be worried about. Quite frankly, a lot of it makes sense. For example, ragas with a higher percentage of "lowered ga" have higher instances of notes going to and from "lowered ga". It makes quite a bit of sense.
+
+## Homogeneity of Variance
+
+Very few of our variables "pass" the Levene test. The transition probabilities are definitely in trouble, but so are a lot of the other variables, such as: 
+
+- tempo
+- short-long; long-short
+- lowered-ni
+- ni
+- da
+- raised ma
+- ga
+
+If you want to see the specifics, just uncomment the "levene_data" line below.
+
+```{r, message=FALSE, warning=FALSE}
+levene_data <- lapply(raga_data1[-1], function(x) leveneTest(raga_data1$y_variable, x, center=median)[,3])
+
+####gets me only p-values of every levene test.            
+levene_pvalue <- t(as.data.frame(levene_data))
+p_values <- as.data.frame(levene_pvalue[,1])
+p_values$pvalue <- p_values$`levene_pvalue[, 1]`
+p_values$piece <- rownames(p_values)
+ggplot(p_values, aes(y=pvalue, x=piece)) +
+  geom_point() + 
+  ylim(0,1)
+  
+```
+
+Originally I was thinking about excluding the transition probabilities, as the collinearity thing is tough to get around with them. While it might still be worth looking at that, we are going to have to transform the data anyway. 
+
+One of the things that is making me reconsider the transition probability data is the fact that, while the other variables are --for the most part-- normally distributed, the transition probabilities are **very much** negatively skewed. We can see this when we run the panels function on different subsets. 
+
+Here is on the columns excluding transition probabilities:
+
+and here is the first 25 transition probabilities:
+
+
+
+So I'm going to try to transform the data to correct for the lack of homogenous variances, but I think I'm going to exclude the transition probabilities *for now*. A principal component analysis (I think!!) wouldn't really require the same assumptions of normality, so we can use them for the classifier.
+
+# Transforming the data
+
+I'm going to use a log 1+n (log1p in r terms; log 1 plus...) transformation, as we have a decent amount of 0s in our data (see Field, Table 5.1).
+
+```{r, message=FALSE, warning=FALSE}
+### first I'll subset the data.
+subsetted_data <- raga_data1[,1:23]
+##log dataframe.
+log_data <- lapply(subsetted_data, function(x) log1p(subsetted_data))
+#log_data <- lapply(raga_data1, function(x) log1p(raga_data1))
+```
+
+
+# Checking everything on the transformed data
+
+I think the log transform *sort of* helps, but we aren't entirely out of the woods.
+
+We still have some correlated data, as can be seen in the plot below.
+
+```{r, message=FALSE, warning=FALSE}
+log_data_matrix <- as.matrix(subsetted_data)
+levene_log_data <- lapply(subsetted_data[-1], function(x) leveneTest(subsetted_data$y_variable, x, center=mean))
+my_cor <- cor(log_data_matrix[,2:ncol(log_data_matrix)])
+
+corrplot(my_cor, tl.col = "black", tl.cex = .6)
+png(height=1800, width=1800, file="~/Desktop/figure2_hi-res.png", type = "cairo")
+corrplot(my_cor, tl.col = "black", tl.cex = .6)
+dev.off()
+```
+
+Also, while most of the data passes the Levene test, not all of it does. The levene results of the log data are below, followed by a boxplot for visuals...
+
+
+# Running a model on the (sub)set.
+
+OK! Now let's run the model.
+
+```{r, message=FALSE, warning=FALSE}
+log_data <- log(subsetted_data +1)
+linear_model <- lm(y_variable ~ ., data=log_data)
+summary(linear_model)
+```
+
+Woah!!! Those are some pretty strong results. Exciting...
+
+## Check for independent errors (Durbin-Watson statistic)
+
+A D-W Statistic of 1.73 is (I think?) OK. 2 is no autocorrelation, substantially less than 2 it's positive correlation, less than one there's alarm.
+
+```{r, message=FALSE, warning=FALSE}
+dwt(linear_model)
+```
+
+
+```{r, message=FALSE, warning=FALSE}
+library(MASS)
+step <- stepAIC(linear_model, direction="backward")
+stdres <- rstandard(step)
+hist(stdres)
+qqnorm(stdres)
+qqline(stdres)
+```
+
+<!-- histogram <- ggplot(album2, aes(studentized.residuals)) + opts(legend.position = -->
+<!-- "none") + geom_histogram(aes(y = ..density..), colour = "black", fill = "white") -->
+<!-- + labs(x = "Studentized Residual", y = "Density") histogram + stat_function(fun -->
+<!-- = dnorm, args = list(mean = mean(album2$studentized. residuals, na.rm = TRUE), -->
+<!-- sd = sd(album2$studentized.residuals, na.rm = TRUE)), colour = "red", size = 1) -->
+
+```{r}
+x <- c(12,11,10,9,8,7,6,5,4,3,2,1,0,1,2,3,4,5,6,7,8,9,10,11,12)
+y<-2*x + rnorm(length(x),0,5.5)
+curve(dnorm(x, mean(y), sd(y)), add=TRUE, col="darkblue", lwd=2)
+```

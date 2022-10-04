@@ -1,0 +1,5 @@
+sa	re	lowered_re	ga	lowered_ga	ma	raised_ma	pa	da	lowered_da	ni	lowered_ni
+Adana_D1T2.txt.deg.degree	.206	.118	0	0	.031	.131	0	.168	0	.112	0	.231
+Darbari_kanada_D2T3.txt.deg.degree	.186	.226	0	0	.133	.069	0	.075	0	.122	0	.186
+Jaunpuri_D2T17.txt.deg.degree	.148	.123	0	0	.066	.132	0	.173	0	.173	0	.181
+Malkauns_D3T10.txt.deg.degree	.295	.011	0	0	.170	.102	0	0	0	.159	0	.261
